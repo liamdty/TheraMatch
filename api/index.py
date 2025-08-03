@@ -16,7 +16,7 @@ load_dotenv(".env.local")
 
 app = FastAPI()
 
-useGemini = True #True
+useGemini = False #True
 
 if useGemini:
     client = OpenAI(
@@ -28,6 +28,7 @@ else:
     client = OpenAI(
         api_key=os.environ.get("OPENAI_API_KEY"),
     )
+    # model = "gpt-4.1-mini-2025-04-14"
     model = "gpt-4o"
 
 class Request(BaseModel):
@@ -235,7 +236,7 @@ Consider:
 - Communication style from personal statement
 - Overall therapeutic approach and philosophy
 
-Base your rankings on therapeutic quality and the user's context, not just specialization matches. All therapists already match the basic filters."""
+Base your rankings on therapeutic quality and the user's context, not just specialization matches. The message should be quite small but personalized to the user's messages to address them directly. All therapists already match the basic filters."""
 
     user_message = f"""Please analyze and rank these {len(profiles)} therapist profiles:
 
@@ -274,7 +275,7 @@ Base your rankings on therapeutic quality and the user's context, not just speci
                             }
                         },
                         "required": ["rankedMatches"],
-                        "additionalProperties": false
+                        "additionalProperties": False
                     }
                 }
             }
@@ -290,8 +291,9 @@ Base your rankings on therapeutic quality and the user's context, not just speci
         except json.JSONDecodeError as e:
             print(f"Failed to parse AI response as JSON: {e}")
             print(f"Raw response: {content}")
-            # Return a fallback structure
+            # Return an error with fallback structure
             return {
+                "error": f"Failed to parse AI response: {str(e)}",
                 "rankedMatches": [
                     {
                         "originalId": i + 1,
@@ -304,8 +306,8 @@ Base your rankings on therapeutic quality and the user's context, not just speci
             
     except Exception as e:
         print(f"Error getting AI rankings: {e}")
-        # Return fallback rankings
         return {
+            "error": f"Error getting AI rankings: {str(e)}",
             "rankedMatches": [
                 {
                     "originalId": i + 1,
@@ -325,6 +327,8 @@ async def handle_chat_data(request: Request, protocol: str = Query('data')):
     response = StreamingResponse(stream_text(openai_messages, protocol))
     response.headers['x-vercel-ai-data-stream'] = 'v1'
     return response
+
+
 @app.post("/api/match-ranking")
 async def handle_match_ranking(request: Request):
     """
@@ -346,24 +350,39 @@ async def handle_match_ranking(request: Request):
         if user_messages:
             user_context = " ".join([msg.content for msg in user_messages])
     
-    # Get AI rankings and descriptions
-    ai_analysis = get_ai_ranked_matches(profiles, user_context)
-    
-    # Combine original profiles with AI rankings
-    ranked_profiles = []
-    for ranking in ai_analysis.get("rankedMatches", []):
-        original_id = ranking["originalId"] - 1  # Convert to 0-based index
-        if 0 <= original_id < len(profiles):
-            profile = profiles[original_id].copy()
-            profile["aiRank"] = ranking["rank"]
-            profile["aiDescription"] = ranking["description"]
-            ranked_profiles.append(profile)
-    
-    # Sort by AI rank
-    ranked_profiles.sort(key=lambda x: x.get("aiRank", 999))
-    
-    return {
-        "profiles": ranked_profiles,
-        "aiAnalysis": ai_analysis
-    }
+    try:
+        # Get AI rankings and descriptions
+        ai_analysis = get_ai_ranked_matches(profiles, user_context)
+        
+        # Check if AI analysis returned an error
+        if "error" in ai_analysis:
+            return {
+                "profiles": [],
+                "aiAnalysis": ai_analysis
+            }
+        
+        # Combine original profiles with AI rankings
+        ranked_profiles = []
+        for ranking in ai_analysis.get("rankedMatches", []):
+            original_id = ranking["originalId"] - 1  # Convert to 0-based index
+            if 0 <= original_id < len(profiles):
+                profile = profiles[original_id].copy()
+                profile["aiRank"] = ranking["rank"]
+                profile["aiDescription"] = ranking["description"]
+                ranked_profiles.append(profile)
+        
+        # Sort by AI rank
+        ranked_profiles.sort(key=lambda x: x.get("aiRank", 999))
+        
+        return {
+            "profiles": ranked_profiles,
+            "aiAnalysis": ai_analysis
+        }
+        
+    except Exception as e:
+        print(f"Error in match-ranking endpoint: {e}")
+        return {
+            "profiles": [],
+            "aiAnalysis": {"error": f"Failed to process therapist rankings: {str(e)}"}
+        }
     

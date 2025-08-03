@@ -56,8 +56,18 @@ export function FindMatchButton({ messages, attributeIds }: FindMatchButtonProps
       }
       
       const data: MatchRankingResponse = await response.json();
+      
+      // Check if there was an error in the response
+      if (data.aiAnalysis && 'error' in data.aiAnalysis) {
+        throw new Error(`API error: ${data.aiAnalysis.error}`);
+      }
+      
+      if (!data.profiles || data.profiles.length === 0) {
+        throw new Error('No therapist profiles were returned');
+      }
+      
       setMatchResults(data);
-      toast.success('Found your top 3 therapist matches!');
+      toast.success(`Found your top ${data.profiles.length} therapist matches!`);
       
       console.log('Match ranking results:', data);
     } catch (error) {
