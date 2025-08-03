@@ -3,7 +3,7 @@
 import type { Message } from "ai";
 import { motion } from "framer-motion";
 
-import { SparklesIcon } from "./icons";
+import { LogoGemini } from "@/app/icons";
 import { Markdown } from "./markdown";
 import { PreviewAttachment } from "./preview-attachment";
 import { cn } from "@/lib/utils";
@@ -30,7 +30,7 @@ export const PreviewMessage = ({
       >
         {message.role === "assistant" && (
           <div className="size-8 flex items-center rounded-full justify-center ring-1 shrink-0 ring-border">
-            <SparklesIcon size={14} />
+            <LogoGemini size={14} />
           </div>
         )}
 
@@ -107,9 +107,7 @@ export const ThinkingMessage = () => {
           },
         )}
       >
-        <div className="size-8 flex items-center rounded-full justify-center ring-1 shrink-0 ring-border">
-          <SparklesIcon size={14} />
-        </div>
+        
 
         <div className="flex flex-col gap-2 w-full">
           <div className="flex flex-col gap-4 text-muted-foreground">

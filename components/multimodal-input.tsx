@@ -1,7 +1,6 @@
 "use client";
 
 import type { ChatRequestOptions, CreateMessage, Message } from "ai";
-import { motion } from "framer-motion";
 import type React from "react";
 import {
   useRef,
@@ -19,64 +18,7 @@ import { ArrowUpIcon, StopIcon } from "./icons";
 import { Button } from "./ui/button";
 import { Textarea } from "./ui/textarea";
 
-const allSuggestedActions = [
-  {
-    title: "I'm struggling with anxiety",
-    label: "and need support",
-    action: "I'm struggling with anxiety and need support",
-  },
-  {
-    title: "Looking for couples",
-    label: "counseling",
-    action: "I'm looking for couples counseling",
-  },
-  {
-    title: "Dealing with depression",
-    label: "and want help",
-    action: "I'm dealing with depression and want help",
-  },
-  {
-    title: "Need trauma therapy",
-    label: "with EMDR",
-    action: "I need trauma therapy, preferably with EMDR",
-  },
-  {
-    title: "Want family therapy",
-    label: "for our relationship",
-    action: "I want family therapy for our relationship",
-  },
-  {
-    title: "Looking for a therapist",
-    label: "who speaks Spanish",
-    action: "I'm looking for a therapist who speaks Spanish",
-  },
-  {
-    title: "Need help with addiction",
-    label: "recovery",
-    action: "I need help with addiction recovery",
-  },
-  {
-    title: "Want online therapy",
-    label: "sessions",
-    action: "I want online therapy sessions",
-  },
-  {
-    title: "Looking for LGBTQ+",
-    label: "friendly therapist",
-    action: "I'm looking for an LGBTQ+ friendly therapist",
-  },
-  {
-    title: "Need grief counseling",
-    label: "support",
-    action: "I need grief counseling support",
-  },
-];
 
-// Get 2 random suggested actions
-const getRandomSuggestedActions = () => {
-  const shuffled = [...allSuggestedActions].sort(() => 0.5 - Math.random());
-  return shuffled.slice(0, 2);
-};
 
 export function MultimodalInput({
   chatId,
@@ -162,37 +104,6 @@ export function MultimodalInput({
 
   return (
     <div className="relative w-full flex flex-col gap-4">
-      {messages.length === 0 && (
-        <div className="grid sm:grid-cols-2 gap-2 w-full">
-          {getRandomSuggestedActions().map((suggestedAction, index) => (
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: 20 }}
-              transition={{ delay: 0.05 * index }}
-              key={`suggested-action-${suggestedAction.title}-${index}`}
-              className={index > 1 ? "hidden sm:block" : "block"}
-            >
-              <Button
-                variant="ghost"
-                onClick={async () => {
-                  append({
-                    role: "user",
-                    content: suggestedAction.action,
-                  });
-                }}
-                className="text-left border rounded-xl px-4 py-3.5 text-sm flex-1 gap-1 sm:flex-col w-full h-auto justify-start items-start"
-              >
-                <span className="font-medium">{suggestedAction.title}</span>
-                <span className="text-muted-foreground">
-                  {suggestedAction.label}
-                </span>
-              </Button>
-            </motion.div>
-          ))}
-        </div>
-      )}
-
       <Textarea
         ref={textareaRef}
         placeholder="Send a message..."

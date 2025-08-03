@@ -16,7 +16,7 @@ load_dotenv(".env.local")
 
 app = FastAPI()
 
-useGemini = True
+useGemini = False #True
 
 if useGemini:
     client = OpenAI(
@@ -81,7 +81,7 @@ def stream_text(messages: List[ChatCompletionMessageParam], protocol: str = 'dat
     draft_tool_calls_index = -1
 
     # Add system prompt for therapist matching chatbot
-    system_prompt = f"""You are a concise, direct therapist matching assistant. Your job is to help users find the best therapist for their needs by gathering information about their situation and preferences.
+    system_prompt = f"""You are a concise, direct therapist matching assistant. Your job is to help users find the best therapist available in Toronto Ontario for their needs by gathering information about their situation and preferences.
 
 IMPORTANT INSTRUCTIONS:
 1. Be clear and direct, just ask what you need to know
