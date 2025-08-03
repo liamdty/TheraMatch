@@ -94,7 +94,7 @@ const Chat = () => {
     isLoading,
     stop,
   } = useChat({
-    maxSteps: 4,
+    maxSteps: 2,
     onError: (error: any) => {
       if (error.message.includes("Too many requests")) {
         toast.error(

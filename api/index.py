@@ -20,12 +20,7 @@ client = OpenAI(
     api_key=os.environ.get("GEMINI_API_KEY"),
     base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
 )
-model = "gemini-2.5-flash-lite"
-
-# Separate OpenAI client for transcription
-transcription_client = OpenAI(
-    api_key=os.environ.get("OPENAI_API_KEY"),
-)
+model = "gemini-2.5-pro"
 
 
 '''
@@ -38,7 +33,7 @@ model = "openrouter/horizon-beta" '''
 tool_client = OpenAI(
     api_key=os.environ.get("OPENAI_API_KEY"),
 )
-tool_model = "gpt-4.1-mini-2025-04-14"
+tool_model = "o4-mini-2025-04-16"
 # model = "gpt-4o"
 
 
@@ -82,6 +77,7 @@ Start by asking what brings them here and what they're looking for in a therapis
     if not messages or messages[0].get("role") != "system":
         messages = [{"role": "system", "content": system_prompt}] + messages
 
+    print(f"\n[STREAMING] Starting AI response stream...")
     stream = tool_client.chat.completions.create(
         messages=messages,
         model=tool_model,
@@ -101,15 +97,6 @@ Start by asking what brings them here and what they're looking for in a therapis
                             },
                             "description": "Array of attribute IDs representing the chosen filters based on user responses"
                         },
-                        "location": {
-                            "type": "object",
-                            "properties": {
-                                "id": {"type": "integer"},
-                                "type": {"type": "string"},
-                                "regionCode": {"type": "string"}
-                            },
-                            "description": "Location object with id, type, and regionCode"
-                        }
                     },
                     "required": ["attributeIds"]
                 }
@@ -121,18 +108,20 @@ Start by asking what brings them here and what they're looking for in a therapis
         for choice in chunk.choices:
             if choice.finish_reason == "stop":
                 continue
-
             elif choice.finish_reason == "tool_calls":
-                print(choice)
+                print(f"\n[TOOL CALLS] Executing {len(draft_tool_calls)} tool call(s)")
                 for tool_call in draft_tool_calls:
+                    print(f"[TOOL CALL] {tool_call['name']} with args: {tool_call['arguments']}")
                     yield '9:{{"toolCallId":"{id}","toolName":"{name}","args":{args}}}\n'.format(
                         id=tool_call["id"],
                         name=tool_call["name"],
                         args=tool_call["arguments"])
 
                 for tool_call in draft_tool_calls:
+                    print(f"[TOOL CALL] Executing {tool_call['name']}...")
                     tool_result = available_tools[tool_call["name"]](
                         **json.loads(tool_call["arguments"]))
+                    print(f"[TOOL CALL] {tool_call['name']} completed with result length: {len(str(tool_result))}")
 
                     yield 'a:{{"toolCallId":"{id}","toolName":"{name}","args":{args},"result":{result}}}\n'.format(
                         id=tool_call["id"],
@@ -155,6 +144,8 @@ Start by asking what brings them here and what they're looking for in a therapis
                         draft_tool_calls[draft_tool_calls_index]["arguments"] += arguments
 
             else:
+                if choice.delta.content:
+                    print(choice.delta.content, end='', flush=True)
                 yield '0:{text}\n'.format(text=json.dumps(choice.delta.content))
 
         if chunk.choices == []:
@@ -162,9 +153,10 @@ Start by asking what brings them here and what they're looking for in a therapis
             prompt_tokens = usage.prompt_tokens
             completion_tokens = usage.completion_tokens
 
+            finish_reason = "tool-calls" if len(draft_tool_calls) > 0 else "stop"
+            print(f"\n[STREAMING] Stream completed. Reason: {finish_reason}, Tokens: {prompt_tokens} prompt + {completion_tokens} completion")
             yield 'e:{{"finishReason":"{reason}","usage":{{"promptTokens":{prompt},"completionTokens":{completion}}},"isContinued":false}}\n'.format(
-                reason="tool-calls" if len(
-                    draft_tool_calls) > 0 else "stop",
+                reason=finish_reason,
                 prompt=prompt_tokens,
                 completion=completion_tokens
             )
@@ -297,7 +289,8 @@ Base your rankings on therapeutic quality and the user's context, not just speci
 async def handle_chat_data(request: Request, protocol: str = Query('data')):
     messages = request.messages
     openai_messages = convert_to_openai_messages(messages)
-    print(openai_messages)
+    print(f"\n[CHAT REQUEST] Received {len(messages)} message(s)")
+    print("Messages:", openai_messages)
     response = StreamingResponse(stream_text(openai_messages, protocol))
     response.headers['x-vercel-ai-data-stream'] = 'v1'
     return response
@@ -374,9 +367,7 @@ async def handle_transcribe(audio_file: UploadFile = File(...)):
         from io import BytesIO
         audio_buffer = BytesIO(audio_content)
         audio_buffer.name = audio_file.filename or "recording.webm"
-        
-        # Use the transcription client and set response format to text
-        transcription = transcription_client.audio.transcriptions.create(
+        transcription = tool_client.audio.transcriptions.create(
             model="whisper-1", 
             file=audio_buffer,
             response_format="text"
