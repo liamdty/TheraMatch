@@ -277,7 +277,7 @@ export function TherapistMatchIndicator({
 
   const displayText = categoryNames.length > 0 
     ? `${categoryNames.join(', ').toLowerCase()}`
-    : `${matchCount} matches`;
+    : `${matchCount}${matchCount === 10000 ? "+ matches" : " matches"}`;
 
   return (
     <HoverCard>
@@ -287,15 +287,24 @@ export function TherapistMatchIndicator({
           variant="outline"
           size="sm"
           className={cn(
-            "h-7 px-2.5 text-xs font-medium text-green-600 border-green-300/20 bg-transparent",
-            " hover:border-green-400/60 hover:text-green-700",
+            "h-7 px-2.5 text-xs font-medium text-green-600 border-green-300/30 bg-transparent",
+            "hover:border-green-400/60 hover:text-green-700 hover:bg-green-50/50 hover:shadow-green-200/50 hover:shadow-md",
+            "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-green-400",
             "transition-all duration-200"
           )}
+          style={{
+            textShadow: '0 0 8px rgba(34, 197, 94, 0.3)',
+          }}
         >
-          <div className={cn(
-            "w-1.5 h-1.5 rounded-full bg-green-500 mr-2",
-            matchCount > 0 ? "animate-pulse" : ""
-          )} />
+          <div 
+            className={cn(
+              "w-1.5 h-1.5 rounded-full bg-green-500 mr-2",
+              matchCount > 0 ? "animate-pulse" : ""
+            )}
+            style={{
+              boxShadow: '0 0 6px rgba(34, 197, 94, 0.6)',
+            }}
+          />
           {matchCount} matches
         </Button>
       </HoverCardTrigger>

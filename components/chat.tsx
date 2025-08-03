@@ -4,12 +4,14 @@ import { PreviewMessage, ThinkingMessage } from "@/components/message";
 import { MultimodalInput } from "@/components/multimodal-input";
 import { TherapistMatchIndicator } from "@/components/therapist-match";
 import { LocationCell } from "@/components/location-cell";
+import { FindMatchButton } from "@/components/find-match-button";
 import { useScrollToBottom } from "@/hooks/use-scroll-to-bottom";
 import { ToolInvocation } from "ai";
 import { useChat } from "ai/react";
 import { toast } from "sonner";
 import { useMemo, useState, useEffect } from "react";
 import { LogoGemini } from "@/app/icons";
+import Image from "next/image";
 
 // Therapy suggestions
 const therapySuggestions = [
@@ -114,7 +116,8 @@ const Chat = () => {
         .reverse(); // Get the most recent one
       
       if (therapistMatches.length > 0) {
-        const result = therapistMatches[0].result as any;
+        const toolResult = therapistMatches[0] as any;
+        const result = toolResult?.result;
         return {
           matchCount: result?.match_count,
           attributeIds: result?.filters_applied || []
@@ -150,7 +153,7 @@ const Chat = () => {
       {/* Header */}
       <header className="flex justify-between items-center p-6 relative z-10">
         <div className="flex items-center gap-2">
-          <img src="https://files.catbox.moe/xbfenx.svg" width={40} height={40} alt="TheraMatch Logo" />
+          <Image src="https://files.catbox.moe/xbfenx.svg" width={40} height={40} alt="TheraMatch Logo" />
           <div className="font-bold text-md text-dark">TheraMatch</div>
         </div>
         <button className="bg-primary text-primary-foreground hover:bg-primary/90 rounded-full px-4 py-2 text-sm cursor-pointer font-semibold transition-colors">
@@ -179,7 +182,7 @@ const Chat = () => {
 
               {/* Subtitle */}
               <p className="text-lg text-muted-foreground">
-                Tell me what you're looking for and I'll help match you with qualified therapists in Toronto.
+                Tell me what you&apos;re looking for and I&apos;ll help match you with qualified therapists in Toronto.
               </p>
 
               {/* Suggestion pills */}
@@ -220,9 +223,13 @@ const Chat = () => {
         <form className="flex mx-auto px-4 bg-background pb-4 md:pb-6 gap-2 w-full md:max-w-3xl relative">
           {/* Top bar with matches on left and location on right */}
           <div className="absolute bottom-full left-0 right-0 mb-2 z-10 flex items-center justify-between px-6">
-            <div className="flex items-center">
+            <div className="flex items-center gap-2">
               <TherapistMatchIndicator 
                 matchCount={latestMatchData.matchCount} 
+                attributeIds={latestMatchData.attributeIds}
+              />
+              <FindMatchButton 
+                messages={messages}
                 attributeIds={latestMatchData.attributeIds}
               />
             </div>

@@ -8,7 +8,7 @@ from fastapi import FastAPI, Query
 from fastapi.responses import StreamingResponse
 from openai import OpenAI
 from .utils.prompt import ClientMessage, convert_to_openai_messages
-from .utils.tools import get_therapist_match_amount
+from .utils.tools import get_therapist_match_amount, get_messages_attribute_ids
 from .utils.constants import CATEGORY_FILTERS
 
 
@@ -83,6 +83,8 @@ def stream_text(messages: List[ChatCompletionMessageParam], protocol: str = 'dat
     # Add system prompt for therapist matching chatbot
     system_prompt = f"""You are a concise, direct therapist matching assistant. Your job is to help users find the best therapist available in Toronto Ontario for their needs by gathering information about their situation and preferences.
 
+MOST IMPORTANT RULE: ALWAYS CALL THE get_therapist_match_amount tool with the last called attribute IDs no matter what.
+
 IMPORTANT INSTRUCTIONS:
 1. Be clear and direct, just ask what you need to know
 2. Ask 1-2 focused questions per response to gather information about:
@@ -90,6 +92,7 @@ IMPORTANT INSTRUCTIONS:
    - Their preferences (gender, session type, therapy type, etc.)
 3. Based on their responses, maintain an internal array of attribute IDs that match their needs
 4. ALWAYS call the get_therapist_match_amount tool with your current attribute ID array with EVERY response
+    - Even if the patient provides no information, call the tool with the last called attribute IDs
 5. Be conversational but efficient - get to the point quickly
 6. Never mention the number of matching therapists in your response - this is shown separately
 7. Don't repeat information you've already acknowledged unless the user adds new details
@@ -198,7 +201,16 @@ Start by asking what brings them here and what they're looking for in a therapis
 async def handle_chat_data(request: Request, protocol: str = Query('data')):
     messages = request.messages
     openai_messages = convert_to_openai_messages(messages)
-
+    print(openai_messages)
     response = StreamingResponse(stream_text(openai_messages, protocol))
     response.headers['x-vercel-ai-data-stream'] = 'v1'
     return response
+
+
+@app.post("/api/match")
+async def handle_match(request: Request):
+    messages = request.messages
+    attr_ids = get_messages_attribute_ids(messages)
+    data = get_therapist_match_amount(attributeIds=attr_ids, limit=20)
+    return data
+    

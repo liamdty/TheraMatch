@@ -8,12 +8,16 @@ export function LocationCell() {
     <Button 
       type="button"
       className={cn(
-        "h-7 px-2.5 text-xs font-medium text-blue-600 border-blue-300/20 bg-transparent",
-        " hover:border-blue-400/60 hover:text-blue-700",
+        "h-7 px-2.5 text-xs font-medium text-blue-600 border-blue-300/30 bg-transparent",
+        "hover:border-blue-400/60 hover:text-blue-700 hover:bg-blue-50/50 hover:shadow-blue-200/50 hover:shadow-md",
+        "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-blue-400",
         "transition-all duration-200"
       )}
       size="sm"
-      variant="outline" 
+      variant="outline"
+      style={{
+        textShadow: '0 0 8px rgba(59, 130, 246, 0.3)',
+      }}
     >
       Toronto, Ontario
     </Button>

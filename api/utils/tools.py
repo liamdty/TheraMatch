@@ -1,6 +1,8 @@
 import requests
+from .prompt import convert_to_openai_messages
+import json
 
-def get_therapist_match_amount(attributeIds, location=None):
+def get_therapist_match_amount(attributeIds, location=None, limit=0):
     """
     Get the number of therapists that match the chosen filters by calling Psychology Today API.
     
@@ -13,13 +15,17 @@ def get_therapist_match_amount(attributeIds, location=None):
     """
     print("started with " + str(attributeIds) + " and " + str(location))
     # Default location for Canada if not provided
-    if not location:
-        location = {
+   
+    location = {
             "id": 68684,  # Default to Toronto
             "type": "City", 
             "regionCode": "ON"
         }
-    
+        
+    if limit > 0:
+        data_mode = True
+    else:
+        data_mode = False
     # Prepare the request payload as specified in plan.md
     payload = {
         "attributeIds": attributeIds,
@@ -28,7 +34,7 @@ def get_therapist_match_amount(attributeIds, location=None):
         "nameSearch": "",
         "listingSearchChar": "",
         "from": 0,
-        "limit": 1,  # We only want the count, not actual results
+        "limit": limit,  # We only want the count, not actual results
         "seed": "default_seed",  # This will be generated dynamically in real implementation
         "location": location
     }
@@ -56,12 +62,15 @@ def get_therapist_match_amount(attributeIds, location=None):
         print("data: " + str(data))
         print("response status: " + str(response.status_code))
         
+        if data_mode:
+            return data.get("data")
         return {
             "match_count": total_count,
             "filters_applied": attributeIds,
             "location": location,
             "message": f"{total_count} matching therapists"
         }
+
 
         
     except requests.RequestException as e:
@@ -74,4 +83,14 @@ def get_therapist_match_amount(attributeIds, location=None):
             "message": f"Error fetching therapist data: {str(e)}",
             "error": True
         }
-    
+
+
+def get_messages_attribute_ids(messages):
+    """
+    Get the attribute IDs from the messages
+    """
+    openai_messages = convert_to_openai_messages(messages)
+    last_assistant = next(m for m in reversed(openai_messages) if m['role']=='assistant' and m.get('tool_calls'))
+    attr_ids = json.loads(last_assistant['tool_calls'][-1]['function']['arguments'])['attributeIds']
+    print("EXTRACTED ATTRIBUTE IDS: " + str(attr_ids))
+    return attr_ids
