@@ -1,20 +1,77 @@
 import requests
 
-def get_current_weather(latitude, longitude):
-    # Format the URL with proper parameter substitution
-    url = f"https://api.open-meteo.com/v1/forecast?latitude={latitude}&longitude={longitude}&current=temperature_2m&hourly=temperature_2m&daily=sunrise,sunset&timezone=auto"
-
+def get_therapist_match_amount(attributeIds, location=None):
+    """
+    Get the number of therapists that match the chosen filters by calling Psychology Today API.
+    
+    Args:
+        attributeIds (list): List of attribute IDs representing the chosen filters
+        location (dict, optional): Location object with id, type, and regionCode
+        
+    Returns:
+        dict: Contains the match count and filter information
+    """
+    print("started with " + str(attributeIds) + " and " + str(location))
+    # Default location for Canada if not provided
+    if not location:
+        location = {
+            "id": 68684,  # Default to Toronto
+            "type": "City", 
+            "regionCode": "ON"
+        }
+    
+    # Prepare the request payload as specified in plan.md
+    payload = {
+        "attributeIds": attributeIds,
+        "costFilter": None,
+        "psychiatristsFilter": None,
+        "nameSearch": "",
+        "listingSearchChar": "",
+        "from": 0,
+        "limit": 1,  # We only want the count, not actual results
+        "seed": "default_seed",  # This will be generated dynamically in real implementation
+        "location": location
+    }
+    
     try:
-        # Make the API call
-        response = requests.get(url)
-
+        # Make the API call to Psychology Today Results API
+        response = requests.post(
+            "https://www.psychologytoday.com/ca/therapists/results",
+            json=payload,
+            headers={
+                "Content-Type": "application/json",
+                "User-Agent": "TheraMatch/1.0"
+            },
+            timeout=10
+        )
+        
         # Raise an exception for bad status codes
         response.raise_for_status()
+        
+        # Parse the response
+        data = response.json()
+        
+        # Extract the total count from the response  
+        total_count = data.get("data", {}).get("total", 0)
+        print("data: " + str(data))
+        print("response status: " + str(response.status_code))
+        
+        return {
+            "match_count": total_count,
+            "filters_applied": attributeIds,
+            "location": location,
+            "message": f"{total_count} matching therapists"
+        }
 
-        # Return the JSON response
-        return response.json()
-
+        
     except requests.RequestException as e:
         # Handle any errors that occur during the request
-        print(f"Error fetching weather data: {e}")
-        return None
+        print(f"Error fetching therapist data: {e}")
+        return {
+            "match_count": 0,
+            "filters_applied": attributeIds,
+            "location": location,
+            "message": f"Error fetching therapist data: {str(e)}",
+            "error": True
+        }
+    

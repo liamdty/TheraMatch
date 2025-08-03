@@ -7,7 +7,7 @@ import { SparklesIcon } from "./icons";
 import { Markdown } from "./markdown";
 import { PreviewAttachment } from "./preview-attachment";
 import { cn } from "@/lib/utils";
-import { Weather } from "./weather";
+import { TherapistMatch } from "./therapist-match";
 
 export const PreviewMessage = ({
   message,
@@ -51,8 +51,8 @@ export const PreviewMessage = ({
 
                   return (
                     <div key={toolCallId}>
-                      {toolName === "get_current_weather" ? (
-                        <Weather weatherAtLocation={result} />
+                      {toolName === "get_therapist_match_amount" ? (
+                        null // Don't display in messages, only show in chat input area
                       ) : (
                         <pre>{JSON.stringify(result, null, 2)}</pre>
                       )}
@@ -63,10 +63,10 @@ export const PreviewMessage = ({
                   <div
                     key={toolCallId}
                     className={cn({
-                      skeleton: ["get_current_weather"].includes(toolName),
+                      skeleton: ["get_therapist_match_amount"].includes(toolName),
                     })}
                   >
-                    {toolName === "get_current_weather" ? <Weather /> : null}
+                    {toolName === "get_therapist_match_amount" ? null : null}
                   </div>
                 );
               })}
