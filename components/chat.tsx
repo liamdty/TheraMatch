@@ -174,7 +174,7 @@ const Chat = () => {
               
               {/* Headline */}
               <h1 className="text-5xl font-bold leading-tight text-foreground">
-                Find The Best Therapist For You With TheraMatch
+                Find The Best Therapist For You
               </h1>
 
               {/* Subtitle */}
