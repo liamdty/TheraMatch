@@ -112,7 +112,7 @@ const Chat = () => {
     const lastMessage = messages[messages.length - 1];
     if (lastMessage?.toolInvocations) {
       const therapistMatches = lastMessage.toolInvocations
-        .filter((tool: ToolInvocation) => tool.toolName === "get_therapist_match_amount" && tool.state === "result")
+        .filter((tool: ToolInvocation) => tool.toolName === "get_therapist_match_data" && tool.state === "result")
         .reverse(); // Get the most recent one
       
       if (therapistMatches.length > 0) {

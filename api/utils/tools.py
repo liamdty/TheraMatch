@@ -1,8 +1,9 @@
 import requests
 from .prompt import convert_to_openai_messages
 import json
+from bs4 import BeautifulSoup
 
-def get_therapist_match_amount(attributeIds, location=None, limit=0):
+def get_therapist_match_data(attributeIds, location=None, limit=0):
     """
     Get the number of therapists that match the chosen filters by calling Psychology Today API.
     
@@ -94,3 +95,55 @@ def get_messages_attribute_ids(messages):
     attr_ids = json.loads(last_assistant['tool_calls'][-1]['function']['arguments'])['attributeIds']
     print("EXTRACTED ATTRIBUTE IDS: " + str(attr_ids))
     return attr_ids
+
+
+
+def get_personal_statement_text(profile_url):
+    """
+    Fetch the page at profile_url and return all the text
+    inside elements with class 'personal-statement'.
+    """
+
+    headers = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/125.0.0.0 Safari/537.36"
+    ),
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.5",
+    "Referer": "https://www.google.ca/",
+    }
+
+    resp = requests.get(profile_url, headers=headers)
+    resp.raise_for_status()
+    soup = BeautifulSoup(resp.text, 'html.parser')
+
+    # find all elements with the 'personal-statement' class:
+    elems = soup.select('.personal-statement')
+    # extract and clean their text, flattening nested tags:
+    texts = [
+        elem.get_text(separator=' ', strip=True)
+        for elem in elems
+    ]
+    # join multiple statements (if any) into one string:
+    return ' '.join(texts)
+
+
+def get_therapist_profile_data(profiles):
+    """
+    Given a list of profile dicts, fetch each profile page
+    and add a 'personalStatement' field containing its text.
+    """
+    enriched = []
+    for profile in profiles:
+        print("profile: " + str(profile.get("listingName")))
+        url = profile.get("canonicalUrl")
+        if not url:
+            continue
+        print("url: " + str(url))
+        profile["personalStatement"] = get_personal_statement_text(url)
+        print("personalStatement: " + str(profile.get("personalStatement")))
+        print("--------------------------------")
+        enriched.append(profile)
+    return enriched

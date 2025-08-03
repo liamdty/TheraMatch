@@ -51,7 +51,7 @@ export const PreviewMessage = ({
 
                   return (
                     <div key={toolCallId}>
-                      {toolName === "get_therapist_match_amount" ? (
+                      {toolName === "get_therapist_match_data" ? (
                         null // Don't display in messages, only show in chat input area
                       ) : (
                         <pre>{JSON.stringify(result, null, 2)}</pre>
@@ -63,10 +63,10 @@ export const PreviewMessage = ({
                   <div
                     key={toolCallId}
                     className={cn({
-                      skeleton: ["get_therapist_match_amount"].includes(toolName),
+                      skeleton: ["get_therapist_match_data"].includes(toolName),
                     })}
                   >
-                    {toolName === "get_therapist_match_amount" ? null : null}
+                    {toolName === "get_therapist_match_data" ? null : null}
                   </div>
                 );
               })}

@@ -1,6 +1,6 @@
 import os
 import json
-from typing import List
+from typing import List, Dict, Any
 from openai.types.chat.chat_completion_message_param import ChatCompletionMessageParam
 from pydantic import BaseModel
 from dotenv import load_dotenv
@@ -8,7 +8,7 @@ from fastapi import FastAPI, Query
 from fastapi.responses import StreamingResponse
 from openai import OpenAI
 from .utils.prompt import ClientMessage, convert_to_openai_messages
-from .utils.tools import get_therapist_match_amount, get_messages_attribute_ids
+from .utils.tools import get_therapist_match_data, get_messages_attribute_ids, get_therapist_profile_data
 from .utils.constants import CATEGORY_FILTERS
 
 
@@ -16,7 +16,7 @@ load_dotenv(".env.local")
 
 app = FastAPI()
 
-useGemini = False #True
+useGemini = True #True
 
 if useGemini:
     client = OpenAI(
@@ -35,7 +35,7 @@ class Request(BaseModel):
 
 
 available_tools = {
-    "get_therapist_match_amount": get_therapist_match_amount
+    "get_therapist_match_data": get_therapist_match_data
 }
 
 def do_stream(messages: List[ChatCompletionMessageParam]):
@@ -46,7 +46,7 @@ def do_stream(messages: List[ChatCompletionMessageParam]):
         tools=[{
             "type": "function",
             "function": {
-                "name": "get_therapist_match_amount",
+                "name": "get_therapist_match_data",
                 "description": "Get the number of therapists that match the chosen filters",
                 "parameters": {
                     "type": "object",
@@ -83,7 +83,7 @@ def stream_text(messages: List[ChatCompletionMessageParam], protocol: str = 'dat
     # Add system prompt for therapist matching chatbot
     system_prompt = f"""You are a concise, direct therapist matching assistant. Your job is to help users find the best therapist available in Toronto Ontario for their needs by gathering information about their situation and preferences.
 
-MOST IMPORTANT RULE: ALWAYS CALL THE get_therapist_match_amount tool with the last called attribute IDs no matter what.
+MOST IMPORTANT RULE: ALWAYS CALL THE get_therapist_match_data tool with the last called attribute IDs no matter what.
 
 IMPORTANT INSTRUCTIONS:
 1. Be clear and direct, just ask what you need to know
@@ -91,7 +91,7 @@ IMPORTANT INSTRUCTIONS:
    - What they're struggling with (anxiety, depression, trauma, etc.)
    - Their preferences (gender, session type, therapy type, etc.)
 3. Based on their responses, maintain an internal array of attribute IDs that match their needs
-4. ALWAYS call the get_therapist_match_amount tool with your current attribute ID array with EVERY response
+4. ALWAYS call the get_therapist_match_data tool with your current attribute ID array with EVERY response
     - Even if the patient provides no information, call the tool with the last called attribute IDs
 5. Be conversational but efficient - get to the point quickly
 6. Never mention the number of matching therapists in your response - this is shown separately
@@ -114,7 +114,7 @@ Start by asking what brings them here and what they're looking for in a therapis
         tools=[{
             "type": "function",
             "function": {
-                "name": "get_therapist_match_amount",
+                "name": "get_therapist_match_data",
                 "description": "Get the number of therapists that match the chosen filters - CALL THIS WITH EVERY RESPONSE",
                 "parameters": {
                     "type": "object",
@@ -195,6 +195,126 @@ Start by asking what brings them here and what they're looking for in a therapis
             )
 
 
+def create_condensed_profiles(profiles: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """
+    Create condensed versions of profiles with only key fields for AI analysis.
+    """
+    condensed = []
+    for i, profile in enumerate(profiles):
+        condensed_profile = {
+            "id": i + 1,  # Simple ID for reference
+            "listingName": profile.get("listingName", ""),
+            "healthRole": profile.get("healthRole", ""),
+            "healthRoleWriteIn": profile.get("healthRoleWriteIn", ""),
+            "personalStatement": profile.get("personalStatement", "")
+        }
+        condensed.append(condensed_profile)
+    return condensed
+
+
+def get_ai_ranked_matches(profiles: List[Dict[str, Any]], user_context: str = "") -> Dict[str, Any]:
+    """
+    Use AI to analyze profiles and return ranked matches with professional descriptions.
+    """
+    condensed_profiles = create_condensed_profiles(profiles)
+    
+    system_prompt = f"""You are a professional therapist matching specialist. You will receive {len(profiles)} therapist profiles and need to:
+
+1. Analyze each therapist's qualifications, specialties, and personal statement
+2. Rank them 1-{len(profiles)} based on overall therapeutic fit and quality
+3. Write a concise, professional 2-3 sentence description for each explaining why they'd be a good therapist
+
+You must respond with a JSON object containing a "rankedMatches" array. Each item in the array should have:
+- "originalId": the therapist's ID number from the input (1, 2, 3, etc.)
+- "rank": their ranking from 1 (best) to {len(profiles)} (lowest)
+- "description": a professional explanation of why they're recommended
+
+Consider:
+- Clinical expertise and specializations
+- Professional background and credentials  
+- Communication style from personal statement
+- Overall therapeutic approach and philosophy
+
+Base your rankings on therapeutic quality and the user's context, not just specialization matches. All therapists already match the basic filters."""
+
+    user_message = f"""Please analyze and rank these {len(profiles)} therapist profiles:
+
+{json.dumps(condensed_profiles, indent=2)}
+
+{f"Additional context about the patient: {user_context}" if user_context else ""}"""
+
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": user_message}
+    ]
+
+    try:
+        response = client.chat.completions.create(
+            messages=messages,
+            model=model,
+            temperature=0.3,  # Lower temperature for more consistent rankings
+            response_format={
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "ranked_matches",
+                    "schema": {
+                        "type": "object",
+                        "properties": {
+                            "rankedMatches": {
+                                "type": "array",
+                                "items": {
+                                    "type": "object",
+                                    "properties": {
+                                        "originalId": {"type": "integer"},
+                                        "rank": {"type": "integer"},
+                                        "description": {"type": "string"}
+                                    },
+                                    "required": ["originalId", "rank", "description"]
+                                }
+                            }
+                        },
+                        "required": ["rankedMatches"],
+                        "additionalProperties": false
+                    }
+                }
+            }
+        )
+        
+        content = response.choices[0].message.content
+        
+        # Parse the structured JSON response
+        try:
+            ranking_data = json.loads(content)
+            return ranking_data
+                
+        except json.JSONDecodeError as e:
+            print(f"Failed to parse AI response as JSON: {e}")
+            print(f"Raw response: {content}")
+            # Return a fallback structure
+            return {
+                "rankedMatches": [
+                    {
+                        "originalId": i + 1,
+                        "rank": i + 1,
+                        "description": f"Qualified therapist with relevant experience and professional approach to mental health care."
+                    }
+                    for i in range(len(profiles))
+                ]
+            }
+            
+    except Exception as e:
+        print(f"Error getting AI rankings: {e}")
+        # Return fallback rankings
+        return {
+            "rankedMatches": [
+                {
+                    "originalId": i + 1,
+                    "rank": i + 1,
+                    "description": f"Experienced therapist with professional training and commitment to client care."
+                }
+                for i in range(len(profiles))
+            ]
+        }
 
 
 @app.post("/api/chat")
@@ -205,12 +325,45 @@ async def handle_chat_data(request: Request, protocol: str = Query('data')):
     response = StreamingResponse(stream_text(openai_messages, protocol))
     response.headers['x-vercel-ai-data-stream'] = 'v1'
     return response
-
-
-@app.post("/api/match")
-async def handle_match(request: Request):
+@app.post("/api/match-ranking")
+async def handle_match_ranking(request: Request):
+    """
+    Get therapist matches with AI-powered rankings and professional descriptions.
+    """
     messages = request.messages
     attr_ids = get_messages_attribute_ids(messages)
-    data = get_therapist_match_amount(attributeIds=attr_ids, limit=20)
-    return data
+    data = get_therapist_match_data(attributeIds=attr_ids, limit=3)
+    profiles = get_therapist_profile_data(data.get("profiles"))
+    
+    if not profiles:
+        return {"error": "No profiles found"}
+    
+    # Get user context from the conversation for better matching
+    user_context = ""
+    if messages:
+        # Extract user messages to understand their needs
+        user_messages = [msg for msg in messages if msg.role == "user"]
+        if user_messages:
+            user_context = " ".join([msg.content for msg in user_messages])
+    
+    # Get AI rankings and descriptions
+    ai_analysis = get_ai_ranked_matches(profiles, user_context)
+    
+    # Combine original profiles with AI rankings
+    ranked_profiles = []
+    for ranking in ai_analysis.get("rankedMatches", []):
+        original_id = ranking["originalId"] - 1  # Convert to 0-based index
+        if 0 <= original_id < len(profiles):
+            profile = profiles[original_id].copy()
+            profile["aiRank"] = ranking["rank"]
+            profile["aiDescription"] = ranking["description"]
+            ranked_profiles.append(profile)
+    
+    # Sort by AI rank
+    ranked_profiles.sort(key=lambda x: x.get("aiRank", 999))
+    
+    return {
+        "profiles": ranked_profiles,
+        "aiAnalysis": ai_analysis
+    }
     
