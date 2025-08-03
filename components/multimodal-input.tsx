@@ -45,6 +45,7 @@ export function MultimodalInput({
   const { width } = useWindowSize()
   const [isRecording, setIsRecording] = useState(false)
   const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null)
+  const [isTranscribing, setIsTranscribing] = useState(false)
 
   const [localStorageInput, setLocalStorageInput] = useLocalStorage("input", "")
 
@@ -82,22 +83,92 @@ export function MultimodalInput({
     }
   }, [handleSubmit, setLocalStorageInput, width, input])
 
+  const transcribeAudio = async (audioBlob: Blob) => {
+    try {
+      setIsTranscribing(true)
+      
+      // Determine file extension based on MIME type
+      let filename = 'recording.webm'
+      if (audioBlob.type.includes('mp4')) {
+        filename = 'recording.mp4'
+      } else if (audioBlob.type.includes('webm')) {
+        filename = 'recording.webm'
+      }
+      
+      const formData = new FormData()
+      formData.append('audio_file', audioBlob, filename)
+      
+      const response = await fetch('/api/transcribe', {
+        method: 'POST',
+        body: formData,
+      })
+      
+      if (!response.ok) {
+        throw new Error('Transcription failed')
+      }
+      
+      const result = await response.json()
+      
+      if (result.error) {
+        throw new Error(result.error)
+      }
+      
+      const transcriptionText = result.text
+      
+      // Set input with fade-in animation
+      if (textareaRef.current) {
+        textareaRef.current.style.opacity = '0'
+        const current_text = textareaRef.current.value
+        const newText = current_text + " " + transcriptionText
+        setInput(newText)
+        
+        // Wait for React to update the DOM, then adjust height
+        setTimeout(() => {
+          adjustHeight()
+          
+          // Animate fade-in
+          if (textareaRef.current) {
+            textareaRef.current.style.transition = 'opacity 0.3s ease-in'
+            textareaRef.current.style.opacity = '1'
+          }
+        }, 10)
+      }
+      
+    } catch (error) {
+      console.error('Transcription error:', error)
+      toast.error('Could not transcribe audio')
+    } finally {
+      setIsTranscribing(false)
+    }
+  }
+
   const startRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-      const recorder = new MediaRecorder(stream)
+      
+      // Try to use a format supported by OpenAI API
+      let mimeType = 'audio/webm'
+      if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
+        mimeType = 'audio/webm;codecs=opus'
+      } else if (MediaRecorder.isTypeSupported('audio/mp4')) {
+        mimeType = 'audio/mp4'
+      } else if (MediaRecorder.isTypeSupported('audio/webm')) {
+        mimeType = 'audio/webm'
+      }
+      
+      const recorder = new MediaRecorder(stream, { mimeType })
       const audioChunks: Blob[] = []
 
       recorder.ondataavailable = (event) => {
         audioChunks.push(event.data)
       }
 
-      recorder.onstop = () => {
-        const audioBlob = new Blob(audioChunks, { type: "audio/wav" })
-        // Here you would typically send the audio to your speech-to-text service
-        // For now, we'll just show a placeholder message
-        setInput("Audio recorded (speech-to-text integration needed)")
+      recorder.onstop = async () => {
+        const audioBlob = new Blob(audioChunks, { type: mimeType })
         stream.getTracks().forEach((track) => track.stop())
+        
+        // Send audio to transcription API
+        await transcribeAudio(audioBlob)
       }
 
       recorder.start()
@@ -130,9 +201,10 @@ export function MultimodalInput({
       <div className="relative">
         <Textarea
           ref={textareaRef}
-          placeholder="Type your message..."
+          placeholder={isTranscribing ? "Transcribing audio..." : "Type your message..."}
           value={input}
           onChange={handleInput}
+          disabled={isTranscribing}
           className={cn(
             "min-h-[52px] max-h-[120px] overflow-hidden resize-none",
             "rounded-3xl pl-6 pr-20 py-4",
@@ -141,6 +213,7 @@ export function MultimodalInput({
             "placeholder:text-muted-foreground/60",
             "text-base leading-relaxed",
             "transition-all duration-200",
+            isTranscribing && "opacity-60 cursor-not-allowed",
           )}
           rows={1}
           onKeyDown={(event) => {
@@ -148,6 +221,8 @@ export function MultimodalInput({
               event.preventDefault()
               if (isLoading) {
                 toast.error("Please wait for the model to finish its response!")
+              } else if (isTranscribing) {
+                toast.error("Please wait for transcription to complete!")
               } else {
                 submitForm()
               }
@@ -156,7 +231,7 @@ export function MultimodalInput({
         />
 
         <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-2">
-          {/* Mic Button - always visible, but changes based on recording state */}
+          {/* Mic Button - always visible, but changes based on recording/transcribing state */}
           <Button
             type="button"
             size="sm"
@@ -165,15 +240,17 @@ export function MultimodalInput({
               "h-8 w-8 rounded-xl p-0",
               "hover:bg-muted transition-all duration-200",
               isRecording && "bg-destructive/10 text-destructive hover:bg-destructive/20",
-              input.trim() && !isRecording && "opacity-60",
+              isTranscribing && "bg-primary/10 text-primary opacity-75 cursor-not-allowed",
+              input.trim() && !isRecording && !isTranscribing && "opacity-60",
             )}
             onClick={handleMicClick}
+            disabled={isTranscribing}
           >
             {isRecording ? <Square className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
           </Button>
 
-          {/* Submit Button - only visible when there's text and not recording */}
-          {input.trim() && !isRecording && (
+          {/* Submit Button - only visible when there's text and not recording/transcribing */}
+          {input.trim() && !isRecording && !isTranscribing && (
             <Button
               type="button"
               size="sm"
@@ -220,6 +297,18 @@ export function MultimodalInput({
               <div className="flex items-center gap-2">
                 <div className="w-2 h-2 bg-destructive rounded-full animate-pulse" />
                 Recording...
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Transcribing indicator */}
+        {isTranscribing && (
+          <div className="absolute -top-12 left-1/2 -translate-x-1/2">
+            <div className="bg-primary/10 text-primary text-sm px-3 py-1 rounded-full border border-primary/20">
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 bg-primary rounded-full animate-pulse" />
+                Transcribing...
               </div>
             </div>
           </div>

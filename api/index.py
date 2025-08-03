@@ -4,7 +4,7 @@ from typing import List, Dict, Any
 from openai.types.chat.chat_completion_message_param import ChatCompletionMessageParam
 from pydantic import BaseModel
 from dotenv import load_dotenv
-from fastapi import FastAPI, Query
+from fastapi import FastAPI, Query, UploadFile, File
 from fastapi.responses import StreamingResponse
 from openai import OpenAI
 from .utils.prompt import ClientMessage, convert_to_openai_messages
@@ -20,23 +20,26 @@ client = OpenAI(
     api_key=os.environ.get("GEMINI_API_KEY"),
     base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
 )
-structured_model = "gemini-2.5-flash-lite"
+model = "gemini-2.5-flash-lite"
+
+# Separate OpenAI client for transcription
+transcription_client = OpenAI(
+    api_key=os.environ.get("OPENAI_API_KEY"),
+)
 
 
-useOpenRouter = False
+'''
+tool_client = OpenAI(
+    api_key=os.environ.get("OPENROUTER_API_KEY"),
+    base_url="https://openrouter.ai/api/v1",
+)
+model = "openrouter/horizon-beta" '''
 
-if useOpenRouter:
-    tool_client = OpenAI(
-        api_key=os.environ.get("OPENROUTER_API_KEY"),
-        base_url="https://openrouter.ai/api/v1",
-    )
-    model = "openrouter/horizon-beta"
-else:
-    tool_client = OpenAI(
-        api_key=os.environ.get("OPENAI_API_KEY"),
-    )
-    model = "gpt-4.1-mini-2025-04-14"
-    # model = "gpt-4o"
+tool_client = OpenAI(
+    api_key=os.environ.get("OPENAI_API_KEY"),
+)
+tool_model = "gpt-4.1-mini-2025-04-14"
+# model = "gpt-4o"
 
 
 
@@ -56,7 +59,7 @@ def stream_text(messages: List[ChatCompletionMessageParam], protocol: str = 'dat
     system_prompt = f"""You are a concise, direct therapist matching assistant. Your job is to help users find the best therapist available in Toronto Ontario for their needs by gathering information about their situation and preferences.
 
 MOST IMPORTANT RULE: ALWAYS CALL THE get_therapist_match_data tool with the last called attribute IDs no matter what.
-
+AT THE VERY BEGINNING OF THE CONVERSATION, CALL THE get_therapist_match_data tool with the default attribute IDs.
 IMPORTANT INSTRUCTIONS:
 1. Be clear and direct, just ask what you need to know
 2. Ask 1-2 focused questions per response to gather information about:
@@ -81,7 +84,7 @@ Start by asking what brings them here and what they're looking for in a therapis
 
     stream = tool_client.chat.completions.create(
         messages=messages,
-        model=model,
+        model=tool_model,
         stream=True,
         tools=[{
             "type": "function",
@@ -224,7 +227,7 @@ Base your rankings on therapeutic quality and the user's context, not just speci
     try:
         response = client.chat.completions.create(
             messages=messages,
-            model=structured_model,
+            model=model,
             response_format={
                 "type": "json_schema",
                 "json_schema": {
@@ -356,4 +359,34 @@ async def handle_match_ranking(request: Request):
             "profiles": [],
             "aiAnalysis": {"error": f"Failed to process therapist rankings: {str(e)}"}
         }
-    
+
+
+@app.post("/api/transcribe")
+async def handle_transcribe(audio_file: UploadFile = File(...)):
+    try:
+        print(f"Receiving audio file: {audio_file.filename}, Content-Type: {audio_file.content_type}")
+        
+        # Read the file content
+        audio_content = await audio_file.read()
+        print(f"Audio content length: {len(audio_content)} bytes")
+        
+        # Create a file-like object from the content
+        from io import BytesIO
+        audio_buffer = BytesIO(audio_content)
+        audio_buffer.name = audio_file.filename or "recording.webm"
+        
+        # Use the transcription client and set response format to text
+        transcription = transcription_client.audio.transcriptions.create(
+            model="whisper-1", 
+            file=audio_buffer,
+            response_format="text"
+        )
+        
+        print("Transcription: ", transcription)
+        return {"text": transcription}
+        
+    except Exception as e:
+        print(f"Transcription error: {e}")
+        import traceback
+        traceback.print_exc()
+        return {"error": str(e)}

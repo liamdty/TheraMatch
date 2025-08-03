@@ -3,7 +3,7 @@
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Star, MapPin, Phone, CheckCircle, ChevronDown, ChevronUp, Award, Trophy, Eye } from "lucide-react"
+import { Star, MapPin, Phone, CheckCircle, ChevronDown, ChevronUp, Award, Trophy, Eye, Play, Pause } from "lucide-react"
 import { useState, useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
 import Image from "next/image"
@@ -64,8 +64,12 @@ export default function TheraMatchResults() {
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [viewedProfiles, setViewedProfiles] = useState<Set<string>>(new Set())
+  const [isVideoPlaying, setIsVideoPlaying] = useState(false)
+  const [showVideoControls, setShowVideoControls] = useState(true)
   const router = useRouter()
   const primaryTherapistRef = useRef<HTMLElement>(null)
+  const videoRef = useRef<HTMLIFrameElement>(null)
+  const controlTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
   useEffect(() => {
     try {
@@ -85,6 +89,44 @@ export default function TheraMatchResults() {
       setError('Failed to load therapist match data.')
     } finally {
       setIsLoading(false)
+    }
+  }, [])
+
+  // Listen for Vimeo player events
+  useEffect(() => {
+    const handleMessage = (event: MessageEvent) => {
+      if (event.origin !== 'https://player.vimeo.com') return
+      
+      try {
+        const data = JSON.parse(event.data)
+        if (data.event === 'play') {
+          setIsVideoPlaying(true)
+          setShowVideoControls(true)
+          hideControlsAfterDelay()
+        } else if (data.event === 'pause') {
+          setIsVideoPlaying(false)
+          setShowVideoControls(true)
+          if (controlTimeoutRef.current) {
+            clearTimeout(controlTimeoutRef.current)
+          }
+        }
+      } catch (e) {
+        // Ignore parsing errors
+      }
+    }
+
+    window.addEventListener('message', handleMessage)
+    return () => {
+      window.removeEventListener('message', handleMessage)
+    }
+  }, [])
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (controlTimeoutRef.current) {
+        clearTimeout(controlTimeoutRef.current)
+      }
     }
   }, [])
 
@@ -129,10 +171,50 @@ export default function TheraMatchResults() {
     return phone
   }
 
+  const hideControlsAfterDelay = () => {
+    if (controlTimeoutRef.current) {
+      clearTimeout(controlTimeoutRef.current)
+    }
+    controlTimeoutRef.current = setTimeout(() => {
+      setShowVideoControls(false)
+    }, 3000) // Hide after 3 seconds
+  }
+
+  const toggleVideoPlayback = (videoSource: string) => {
+    if (videoRef.current) {
+      if (isVideoPlaying) {
+        // Pause video using postMessage API
+        videoRef.current.contentWindow?.postMessage('{"method":"pause"}', '*')
+        setIsVideoPlaying(false)
+        setShowVideoControls(true)
+        if (controlTimeoutRef.current) {
+          clearTimeout(controlTimeoutRef.current)
+        }
+      } else {
+        // Play video using postMessage API
+        videoRef.current.contentWindow?.postMessage('{"method":"play"}', '*')
+        setIsVideoPlaying(true)
+        setShowVideoControls(true)
+        hideControlsAfterDelay()
+      }
+    }
+  }
+
+  const handleVideoContainerClick = (videoSource: string) => {
+    toggleVideoPlayback(videoSource)
+  }
+
   const handleViewProfile = (therapistUuid: string) => {
     const newIndex = therapistData?.profiles.findIndex((t) => t.uuid === therapistUuid)
     if (newIndex !== -1 && newIndex !== undefined) {
       setPrimaryTherapistIndex(newIndex)
+      
+      // Reset video playing state and controls when switching profiles
+      setIsVideoPlaying(false)
+      setShowVideoControls(true)
+      if (controlTimeoutRef.current) {
+        clearTimeout(controlTimeoutRef.current)
+      }
       
       // Mark this profile as viewed
       setViewedProfiles(prev => new Set(prev).add(therapistUuid))
@@ -172,9 +254,9 @@ export default function TheraMatchResults() {
     <div className="min-h-screen bg-background">
       {/* Header */}
       <header className="flex justify-between items-center p-6 relative z-10">
-        <div className="flex items-center gap-2">
-          <Image src="https://files.catbox.moe/xbfenx.svg" width={128} height={128}  className="w-16 h-16" alt="TheraMatch Logo" />
-          <div className="font-bold text-md text-dark">TheraMatch</div>
+        <div className="flex items-center gap-1">
+          <Image src="https://files.catbox.moe/xbfenx.svg" width={128} height={128}  className="w-14 h-14" alt="TheraMatch Logo" />
+          <div className="font-bold text-lg text-dark">TheraMatch</div>
         </div>
         <button className="bg-primary text-primary-foreground hover:bg-primary/90 rounded-full px-4 py-2 text-sm cursor-pointer font-semibold transition-colors"
           onClick={() => router.push('/')}>
@@ -200,17 +282,59 @@ export default function TheraMatchResults() {
                 <div className="grid md:grid-cols-3 gap-8">
                   {/* Photo/Video Section */}
                   <div className="flex flex-col h-full">
-                    <div className="flex-1 mb-4">
+                    <div className="flex-1 mb-4 min-h-80">
                       {primaryTherapist.introVideo && primaryTherapist.introVideo.source ? (
-                        // Video container with max height to prevent overflow
-                        <div className="w-full max-h-80 overflow-hidden rounded-lg">
+                        // Vimeo container with custom controls
+                        <div 
+                          className="relative w-full max-h-80 overflow-hidden rounded-lg cursor-pointer group"
+                          onClick={() => handleVideoContainerClick(primaryTherapist.introVideo!.source)}
+                          onMouseEnter={() => {
+                            setShowVideoControls(true)
+                            if (controlTimeoutRef.current) {
+                              clearTimeout(controlTimeoutRef.current)
+                            }
+                          }}
+                          onMouseLeave={() => {
+                            if (isVideoPlaying) {
+                              hideControlsAfterDelay()
+                            }
+                          }}
+                        >
                           <iframe
-                            src={primaryTherapist.introVideo.source}
-                            className="w-full h-80 rounded-lg"
+                            ref={videoRef}
+                            src={`${primaryTherapist.introVideo.source}?api=1&controls=0&title=0&byline=0&portrait=0`}
+                            className="w-full h-80 rounded-lg pointer-events-none"
                             frameBorder="0"
                             allow="autoplay; fullscreen; picture-in-picture"
                             allowFullScreen
+                            onLoad={() => {
+                              // Register for play/pause events once iframe loads
+                              if (videoRef.current?.contentWindow) {
+                                videoRef.current.contentWindow.postMessage('{"method":"addEventListener","value":"play"}', '*')
+                                videoRef.current.contentWindow.postMessage('{"method":"addEventListener","value":"pause"}', '*')
+                              }
+                            }}
                           />
+                          
+                          {/* Custom Play/Pause Button - Bottom Right */}
+                          <div 
+                            className={`absolute bottom-4 right-4 transition-all duration-300 ${
+                              showVideoControls || !isVideoPlaying 
+                                ? 'opacity-100 translate-y-0' 
+                                : 'opacity-0 translate-y-2'
+                            }`}
+                          >
+                            <Button
+                              size="sm"
+                              className="bg-black/60 hover:bg-black/80 text-white rounded-full w-12 h-12 p-0 shadow-lg backdrop-blur-sm border border-white/20"
+                            >
+                              {isVideoPlaying ? (
+                                <Pause className="w-4 h-4" fill="currentColor" />
+                              ) : (
+                                <Play className="w-4 h-4 ml-0.5" fill="currentColor" />
+                              )}
+                            </Button>
+                          </div>
                         </div>
                       ) : (
                         // Square image if no video
@@ -220,6 +344,7 @@ export default function TheraMatchResults() {
                           src={primaryTherapist.photoUrls.thumbnail || "/placeholder.svg"}
                           alt={primaryTherapist.listingName}
                           className="w-full aspect-square object-cover rounded-lg"
+                          priority
                         />
                       )}
                     </div>
@@ -260,6 +385,7 @@ export default function TheraMatchResults() {
                             src={primaryTherapist.photoUrls.thumbnail || "/placeholder.svg"}
                             alt={primaryTherapist.listingName}
                             className="w-16 h-16 object-cover rounded-full flex-shrink-0 mt-1"
+                            priority
                           />
                         )}
                         <div className="flex-1">
@@ -291,7 +417,7 @@ export default function TheraMatchResults() {
                         <Star className="w-4 h-4 fill-current" />
                         Why We Recommend This Match
                       </h4>
-                      <p className="text-primary/80 text-sm leading-relaxed">{primaryTherapist.aiDescription}</p>
+                      <p className="text-dark text-sm leading-relaxed">{primaryTherapist.aiDescription}</p>
                     </div>
 
                     {/* Action Buttons */}

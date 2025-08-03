@@ -4,6 +4,15 @@ import { toast } from "sonner";
 import { Message } from "ai";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
 
 interface TherapistProfile {
   listingName: string;
@@ -29,18 +38,34 @@ interface MatchRankingResponse {
 interface FindMatchButtonProps {
   messages: Message[];
   attributeIds: number[];
+  matchCount: number;
 }
 
-export function FindMatchButton({ messages, attributeIds }: FindMatchButtonProps) {
+export function FindMatchButton({ matchCount, messages, attributeIds }: FindMatchButtonProps) {
   const [isLoading, setIsLoading] = useState(false);
+  const [showDialog, setShowDialog] = useState(false);
   const router = useRouter();
 
   if (attributeIds.length === 0) {
     return null;
   }
 
+
   const handleFindMatch = async () => {
+    
+    if (matchCount > 500) {
+      setShowDialog(true);
+      return;
+    }
+    
+    // Proceed directly for <= 500 matches
+    await processMatchRequest();
+  };
+
+  const processMatchRequest = async () => {
     setIsLoading(true);
+    setShowDialog(false);
+    
     try {
       const response = await fetch('/api/match-ranking', {
         method: 'POST',
@@ -84,26 +109,64 @@ export function FindMatchButton({ messages, attributeIds }: FindMatchButtonProps
   };
 
   return (
-    <button
-      onClick={handleFindMatch}
-      disabled={isLoading}
-      className="inline-flex items-center justify-center gap-2 h-7 px-2.5 text-xs font-medium rounded-md border transition-all duration-200
-        text-pink-500 border-pink-300/30 bg-transparent hover:border-pink-400/60 hover:text-pink-600 
-        hover:bg-pink-50/50 hover:shadow-pink-200/50 hover:shadow-md
-        focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-pink-400
-        active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
-      style={{
-        textShadow: '0 0 8px rgba(236, 72, 153, 0.3)',
-      }}
-    >
-      {isLoading ? (
-        <>
-          <div className="w-3 h-3 border border-pink-400 border-t-transparent rounded-full animate-spin" />
-          Finding...
-        </>
-      ) : (
-        'Find Match'
-      )}
-    </button>
+    <>
+      <button
+        type="button"
+        onClick={handleFindMatch}
+        disabled={isLoading}
+        className="inline-flex items-center justify-center gap-2 h-7 px-2.5 text-xs font-medium rounded-md border transition-all duration-200
+          text-pink-500 border-pink-300/30 bg-transparent hover:border-pink-400/60 hover:text-pink-600 
+          hover:bg-pink-50/50 hover:shadow-pink-200/50 hover:shadow-md
+          focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-pink-400
+          active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+        style={{
+          textShadow: '0 0 8px rgba(236, 72, 153, 0.3)',
+        }}
+      >
+        {isLoading ? (
+          <>
+            <div className="w-3 h-3 border border-pink-400 border-t-transparent rounded-full animate-spin" />
+            Finding...
+          </>
+        ) : (
+          'Find Match'
+        )}
+      </button>
+
+      <Dialog open={showDialog} onOpenChange={setShowDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>High Match Count</DialogTitle>
+            <DialogDescription>
+              You have {matchCount.toLocaleString()} potential matches. While we can proceed with finding your best matches, 
+              refining your profile with more specific preferences might yield better, more personalized results.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button 
+              type="button"
+              variant="outline" 
+              onClick={() => setShowDialog(false)}
+            >
+              Back
+            </Button>
+            <Button 
+              type="button"
+              onClick={processMatchRequest}
+              disabled={isLoading}
+            >
+              {isLoading ? (
+                <>
+                  <div className="w-3 h-3 mr-2 border border-white border-t-transparent rounded-full animate-spin" />
+                  Finding...
+                </>
+              ) : (
+                'Continue Anyway'
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }

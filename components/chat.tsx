@@ -152,9 +152,9 @@ const Chat = () => {
 
       {/* Header */}
       <header className="flex justify-between items-center p-6 relative z-10">
-        <div className="flex items-center gap-2">
-          <Image src="https://files.catbox.moe/xbfenx.svg" width={128} height={128}  className="w-16 h-16" alt="TheraMatch Logo" />
-          <div className="font-bold text-md text-dark">TheraMatch</div>
+        <div className="flex items-center gap-1">
+          <Image src="https://files.catbox.moe/xbfenx.svg" width={128} height={128}  className="w-14 h-14" alt="TheraMatch Logo" />
+          <div className="font-bold text-lg text-dark">TheraMatch</div>
         </div>
       </header>
 
@@ -174,7 +174,7 @@ const Chat = () => {
               
               {/* Headline */}
               <h1 className="text-5xl font-bold leading-tight text-foreground">
-                Find the best therapist for you with TheraMatch.
+                Find The Best Therapist For You With TheraMatch
               </h1>
 
               {/* Subtitle */}
@@ -219,13 +219,14 @@ const Chat = () => {
       <div className="relative z-10">
         <form className="flex mx-auto px-4 bg-background pb-4 md:pb-6 gap-2 w-full md:max-w-3xl relative">
           {/* Top bar with matches on left and location on right */}
-          <div className="absolute bottom-full left-0 right-0 mb-2 z-10 flex items-center justify-between px-6">
+          <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 z-10 w-full max-w-2xl flex items-center justify-between px-4">
             <div className="flex items-center gap-2">
               <TherapistMatchIndicator 
                 matchCount={latestMatchData.matchCount} 
                 attributeIds={latestMatchData.attributeIds}
               />
               <FindMatchButton 
+                matchCount={latestMatchData.matchCount}
                 messages={messages}
                 attributeIds={latestMatchData.attributeIds}
               />

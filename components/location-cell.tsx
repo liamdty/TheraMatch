@@ -8,7 +8,7 @@ export function LocationCell() {
     <Button 
       type="button"
       className={cn(
-        "h-7 px-2.5 text-xs font-medium text-blue-600 border-blue-300/30 bg-transparent",
+        "h-8 px-4 text-xs font-medium text-blue-600 border-blue-300/30 bg-transparent rounded-full",
         "hover:border-blue-400/60 hover:text-blue-700 hover:bg-blue-50/50 hover:shadow-blue-200/50 hover:shadow-md",
         "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-blue-400",
         "transition-all duration-200"
