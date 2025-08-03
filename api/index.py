@@ -16,20 +16,29 @@ load_dotenv(".env.local")
 
 app = FastAPI()
 
-useGemini = False #True
+client = OpenAI(
+    api_key=os.environ.get("GEMINI_API_KEY"),
+    base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
+)
+structured_model = "gemini-2.5-flash-lite"
 
-if useGemini:
-    client = OpenAI(
+
+useOpenRouter = False
+
+if useOpenRouter:
+    tool_client = OpenAI(
         api_key=os.environ.get("OPENROUTER_API_KEY"),
         base_url="https://openrouter.ai/api/v1",
     )
     model = "openrouter/horizon-beta"
 else:
-    client = OpenAI(
+    tool_client = OpenAI(
         api_key=os.environ.get("OPENAI_API_KEY"),
     )
-    # model = "gpt-4.1-mini-2025-04-14"
-    model = "gpt-4o"
+    model = "gpt-4.1-mini-2025-04-14"
+    # model = "gpt-4o"
+
+
 
 class Request(BaseModel):
     messages: List[ClientMessage]
@@ -38,44 +47,6 @@ class Request(BaseModel):
 available_tools = {
     "get_therapist_match_data": get_therapist_match_data
 }
-
-def do_stream(messages: List[ChatCompletionMessageParam]):
-    stream = client.chat.completions.create(
-        messages=messages,
-        model=model,
-        stream=True,
-        tools=[{
-            "type": "function",
-            "function": {
-                "name": "get_therapist_match_data",
-                "description": "Get the number of therapists that match the chosen filters",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "attributeIds": {
-                            "type": "array",
-                            "items": {
-                                "type": "integer"
-                            },
-                            "description": "Array of attribute IDs representing the chosen filters"
-                        },
-                        "location": {
-                            "type": "object",
-                            "properties": {
-                                "id": {"type": "integer"},
-                                "type": {"type": "string"},
-                                "regionCode": {"type": "string"}
-                            },
-                            "description": "Location object with id, type, and regionCode only use if given to you it's a specific format"
-                        }
-                    },
-                    "required": ["attributeIds"]
-                }
-            }
-        }]
-    )
-
-    return stream
 
 def stream_text(messages: List[ChatCompletionMessageParam], protocol: str = 'data'):
     draft_tool_calls = []
@@ -108,7 +79,7 @@ Start by asking what brings them here and what they're looking for in a therapis
     if not messages or messages[0].get("role") != "system":
         messages = [{"role": "system", "content": system_prompt}] + messages
 
-    stream = client.chat.completions.create(
+    stream = tool_client.chat.completions.create(
         messages=messages,
         model=model,
         stream=True,
@@ -212,6 +183,7 @@ def create_condensed_profiles(profiles: List[Dict[str, Any]]) -> List[Dict[str, 
         condensed.append(condensed_profile)
     return condensed
 
+NUMBER_OF_PICKED_MATCHES = 5
 
 def get_ai_ranked_matches(profiles: List[Dict[str, Any]], user_context: str = "") -> Dict[str, Any]:
     """
@@ -222,12 +194,12 @@ def get_ai_ranked_matches(profiles: List[Dict[str, Any]], user_context: str = ""
     system_prompt = f"""You are a professional therapist matching specialist. You will receive {len(profiles)} therapist profiles and need to:
 
 1. Analyze each therapist's qualifications, specialties, and personal statement
-2. Rank them 1-{len(profiles)} based on overall therapeutic fit and quality
+2. Rank them 1-{NUMBER_OF_PICKED_MATCHES} based on overall therapeutic fit and quality
 3. Write a concise, professional 2-3 sentence description for each explaining why they'd be a good therapist
 
 You must respond with a JSON object containing a "rankedMatches" array. Each item in the array should have:
 - "originalId": the therapist's ID number from the input (1, 2, 3, etc.)
-- "rank": their ranking from 1 (best) to {len(profiles)} (lowest)
+- "rank": their ranking from 1 (best) to {NUMBER_OF_PICKED_MATCHES} (lowest) of the top {NUMBER_OF_PICKED_MATCHES} matches
 - "description": a professional explanation of why they're recommended
 
 Consider:
@@ -238,7 +210,7 @@ Consider:
 
 Base your rankings on therapeutic quality and the user's context, not just specialization matches. The message should be quite small but personalized to the user's messages to address them directly. All therapists already match the basic filters."""
 
-    user_message = f"""Please analyze and rank these {len(profiles)} therapist profiles:
+    user_message = f"""Please analyze and rank these {len(profiles)} therapist profiles, but only return the top {NUMBER_OF_PICKED_MATCHES}:
 
 {json.dumps(condensed_profiles, indent=2)}
 
@@ -252,8 +224,7 @@ Base your rankings on therapeutic quality and the user's context, not just speci
     try:
         response = client.chat.completions.create(
             messages=messages,
-            model=model,
-            temperature=0.3,  # Lower temperature for more consistent rankings
+            model=structured_model,
             response_format={
                 "type": "json_schema",
                 "json_schema": {
@@ -336,7 +307,7 @@ async def handle_match_ranking(request: Request):
     """
     messages = request.messages
     attr_ids = get_messages_attribute_ids(messages)
-    data = get_therapist_match_data(attributeIds=attr_ids, limit=3)
+    data = get_therapist_match_data(attributeIds=attr_ids, limit=15)
     profiles = get_therapist_profile_data(data.get("profiles"))
     
     if not profiles:
@@ -353,7 +324,7 @@ async def handle_match_ranking(request: Request):
     try:
         # Get AI rankings and descriptions
         ai_analysis = get_ai_ranked_matches(profiles, user_context)
-        
+        print("SELECTED TOP MATCHES: ", len(ai_analysis.get("rankedMatches", [])))
         # Check if AI analysis returned an error
         if "error" in ai_analysis:
             return {

@@ -153,12 +153,9 @@ const Chat = () => {
       {/* Header */}
       <header className="flex justify-between items-center p-6 relative z-10">
         <div className="flex items-center gap-2">
-          <Image src="https://files.catbox.moe/xbfenx.svg" width={40} height={40} alt="TheraMatch Logo" />
+          <Image src="https://files.catbox.moe/xbfenx.svg" width={128} height={128}  className="w-16 h-16" alt="TheraMatch Logo" />
           <div className="font-bold text-md text-dark">TheraMatch</div>
         </div>
-        <button className="bg-primary text-primary-foreground hover:bg-primary/90 rounded-full px-4 py-2 text-sm cursor-pointer font-semibold transition-colors">
-          Get Started
-        </button>
       </header>
 
       {/* Main Content Area */}

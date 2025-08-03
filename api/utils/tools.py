@@ -47,7 +47,7 @@ def get_therapist_match_data(attributeIds, location=None, limit=0):
             json=payload,
             headers={
                 "Content-Type": "application/json",
-                "User-Agent": "TheraMatch/1.0"
+                "User-Agent": "PsychologyToday/1.0"
             },
             timeout=10
         )
